@@ -321,6 +321,40 @@ def liquidate_available(text: str, today: date):
     return coupons
 
 
+# ---------------------------------------------------------------- 附加：点餐预估
+
+
+def order_estimate(cart_text: str):
+    """点餐试价预估（本地计算，不触网）。
+
+    输入：购物车 JSON（items 数组：productCode/name/quantity/priceUnit）。
+    兼容两种价格来源：
+      · query-meals 的 currentPrice（元字符串）——priceUnit="yuan"（默认）
+      · calculate-price 的 price（分，整数）      ——priceUnit="fen"
+    契约陷阱：两种单位方向相反，统一转为元展示，避免“分当元”百倍价事故。
+    """
+    data = json.loads(strip_preamble(cart_text))
+    items = data.get("items", data if isinstance(data, list) else [])
+    rows, total = [], Decimal("0")
+    for it in items:
+        qty = int(it.get("quantity", 1))
+        raw_price = it.get("price", it.get("currentPrice", "0"))
+        price = parse_money(raw_price)
+        if str(it.get("priceUnit", "yuan")).lower() == "fen":
+            price = price / 100  # 分 → 元
+        subtotal = price * qty
+        total += subtotal
+        rows.append({"name": it.get("name", it.get("productCode", "")),
+                     "qty": qty, "price": price, "subtotal": subtotal})
+    lines = ["🧾 点餐试价预估", "", "| 餐品 | 数量 | 单价(¥) | 小计(¥) |",
+             "|------|------|---------|---------|"]
+    for r in rows:
+        lines.append(f"| {r['name']} | {r['qty']} | {r['price']} | {r['subtotal']} |")
+    lines.append("")
+    lines.append(f"合计：¥{total}（下单前需用户明确确认，支付由用户自行完成）")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------- 汇总清算
 
 
@@ -466,6 +500,14 @@ def demo_texts():
 
 
 def main():
+    # 点餐预估模式：python liquidate.py --estimate cart.json
+    if "--estimate" in sys.argv:
+        idx = sys.argv.index("--estimate")
+        paths = [a for a in sys.argv[idx + 1:] if not a.startswith("-")]
+        text = open(paths[0], "r", encoding="utf-8").read() if paths else sys.stdin.read()
+        print(order_estimate(text))
+        return
+
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     if "--demo" in sys.argv:
         texts = demo_texts()

@@ -79,6 +79,40 @@ description: 麦麦资产清算官 - 扫描麦当劳账户全部资产（优惠�
 3. **未领券提醒**（第 4 步）
 4. **积分建议**：如果积分即将清零且商城有合适的兑换品（`mall-points-products`），给出"把积分变成实物"的建议；下单前必须用户确认
 
+## 附加能力：基础点餐（确认式）
+
+清算之外，用户常想“顺手把这顿饭点了”。本 Skill 提供最小闭环的基础点餐链路，**下单前必须用户逐项确认**：
+
+### 点餐流程
+
+```
+① 选场景：到店自取(beType=1) / 得来速(5) / 麦乐送(2) / 团餐(6)
+② 查门店：query-nearby-stores（自取/得来速，按位置需 city+keyword）
+          或 delivery-query-stores（外送/团餐，需 addressId）
+          → 拿到 storeCode + beCode，全链路回传同一 beCode
+③ 看菜单：query-meals（storeCode, orderType, beType）
+④ 看详情：query-meal-detail（code，套餐组成展示）
+⑤ 试价： calculate-price（items=[{productCode, quantity}]）
+          ⚠️ 返回价格单位是「分」，展示前 ÷100
+⑥ 确认： 向用户复述「门店/菜品/数量/总价」，拿到明确「确认」才可下单
+⑦ 下单： create-order
+          · 到店/得来速必填 takeWayCode（来自 calculate-price 的 takeWayList，让用户选）
+          · 外送/团餐必填 addressId
+          → 返回 orderId + payH5Url，支付由用户自行完成
+⑧ 查单： query-order（orderId）确认订单状态
+```
+
+### 点餐安全红线
+
+- ⑤试价前可自由浏览；**⑦下单必须复述订单并获得用户明确确认**，绝不静默下单；
+- 支付链接只展示给用户，永不代付；
+- 券的使用（couponId）由用户指定或在清算清单里推荐，不擅自绑定；
+- 单位陷阱再强调：`calculate-price` 出来的分 ÷100，菜单/订单里的元字符串直接用。
+
+### 清算 × 点餐的联动（本 Skill 特色）
+
+点餐前先跑清算：如果清单里有 P0/P1 的券，在菜单环节优先推荐“用这张券的餐品”，让“先吃掉快死的资产”落到每一次点餐里。
+
 ## 隐私与安全红线
 
 - 本 Skill 只做**读取 + 用户确认后的领券**，不自动下单、不自动兑换
